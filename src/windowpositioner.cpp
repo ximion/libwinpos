@@ -38,6 +38,8 @@ public:
     QPointer<Zone> zone;
     bool autoZone = true;
     QMetaObject::Connection zoneSizeConn;
+    QPoint pendingPosition;
+    bool hasPendingPosition = false;
 
     // Position/size state (all environments)
     QPoint position;
@@ -199,7 +201,8 @@ void WindowPositioner::move(const QPoint &pos)
 {
     if (d->isOnWayland) {
         if (!d->item || !d->zone) {
-            qCWarning(logWinpos) << "WindowPositioner::move: not yet initialised";
+            d->pendingPosition = pos;
+            d->hasPendingPosition = true;
             return;
         }
         d->item->setPosition(pos);
@@ -356,6 +359,11 @@ void WindowPositioner::initializeWayland()
             Q_EMIT zoneSizeChanged(sz);
         });
         d->zone->addItem(d->item);
+    }
+
+    if (d->hasPendingPosition) {
+        d->hasPendingPosition = false;
+        move(d->pendingPosition);
     }
 }
 
