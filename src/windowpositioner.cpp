@@ -6,6 +6,8 @@
 
 #include "Winpos/WindowPositioner.h"
 
+#include <QByteArray>
+#include <QDataStream>
 #include <QEvent>
 #include <QGuiApplication>
 #include <QLoggingCategory>
@@ -392,6 +394,80 @@ void WindowPositioner::setupX11(QScreen *screen)
         Q_EMIT zoneSizeChanged(d->zoneSize);
         onX11PositionChanged();
     });
+}
+
+QByteArray WindowPositioner::saveGeometry() const
+{
+    if (!d->window)
+        return {};
+
+    QByteArray array;
+    QDataStream stream(&array, QIODevice::WriteOnly);
+    stream.setVersion(QDataStream::Qt_6_8);
+
+    const quint32 magicNumber = 0x5747454F; // 'WGEO'
+    const quint16 majorVersion = 1;
+    const quint16 minorVersion = 0;
+    stream << magicNumber << majorVersion << minorVersion << frameGeometry() << geometry() << zoneSize()
+           << quint8(d->window->windowStates() & Qt::WindowMaximized) << quint8(d->window->windowStates() & Qt::WindowFullScreen);
+
+    return array;
+}
+
+bool WindowPositioner::restoreGeometry(const QByteArray &geometry)
+{
+    if (geometry.size() < 4)
+        return false;
+
+    QDataStream stream(geometry);
+    stream.setVersion(QDataStream::Qt_6_8);
+
+    const quint32 magicNumber = 0x5747454F; // 'WGEO'
+    quint32 storedMagicNumber;
+    stream >> storedMagicNumber;
+    if (storedMagicNumber != magicNumber)
+        return false;
+
+    const quint16 currentMajorVersion = 1;
+    quint16 majorVersion = 0;
+    quint16 minorVersion = 0;
+    stream >> majorVersion >> minorVersion;
+
+    if (majorVersion > currentMajorVersion)
+        return false;
+
+    QRect restoredFrameGeometry;
+    QRect restoredGeometry;
+    QSize restoredZoneSize;
+    quint8 maximized = 0;
+    quint8 fullScreen = 0;
+
+    stream >> restoredFrameGeometry >> restoredGeometry >> restoredZoneSize >> maximized >> fullScreen;
+
+    if (stream.status() != QDataStream::Ok)
+        return false;
+
+    // Clamp position if the zone size has changed since the geometry was saved.
+    const QSize currentZoneSize = zoneSize();
+    if (!currentZoneSize.isEmpty() && !restoredZoneSize.isEmpty() && currentZoneSize != restoredZoneSize) {
+        QPoint pos = restoredGeometry.topLeft();
+        pos.setX(qBound(0, pos.x(), currentZoneSize.width() - restoredGeometry.width()));
+        pos.setY(qBound(0, pos.y(), currentZoneSize.height() - restoredGeometry.height()));
+        restoredGeometry.moveTopLeft(pos);
+    }
+
+    if (!maximized && !fullScreen)
+        setGeometry(restoredGeometry);
+
+    if (d->window) {
+        Qt::WindowStates states = d->window->windowStates();
+        states.setFlag(Qt::WindowMaximized, maximized != 0);
+        states.setFlag(Qt::WindowFullScreen, fullScreen != 0);
+        if (maximized || fullScreen)
+            d->window->setWindowStates(states);
+    }
+
+    return true;
 }
 
 } // namespace Winpos

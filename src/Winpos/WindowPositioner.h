@@ -120,6 +120,30 @@ public Q_SLOTS:
      */
     void setGeometry(const QRect &rect);
 
+    /**
+     * Serialize the current zone-relative geometry (position + size) and
+     * window state into an opaque byte array suitable for storing in
+     * application settings. The format mirrors Qt's QWidget::saveGeometry().
+     *
+     * @return Serialized geometry, or an empty QByteArray if the positioner
+     *         has no valid window.
+     */
+    QByteArray saveGeometry() const;
+
+    /**
+     * Restore the zone-relative geometry and window state from data previously
+     * produced by saveGeometry(). The format mirrors Qt's
+     * QWidget::restoreGeometry().
+     *
+     * If the stored zone size differs from the current one, the position is
+     * clamped so the window stays inside the zone.
+     *
+     * @param geometry  Byte array returned by a prior saveGeometry() call.
+     * @return @c true if the data was valid and the geometry was applied,
+     *         @c false if the data was unrecognized or malformed.
+     */
+    bool restoreGeometry(const QByteArray &geometry);
+
 Q_SIGNALS:
     void zoneChanged(Winpos::Zone *zone);
     void positionChanged(const QPoint &pos);
