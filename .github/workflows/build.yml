@@ -1,0 +1,74 @@
+name: Build
+
+on: [push, pull_request]
+
+jobs:
+  build-linux:
+    name: ${{ matrix.display_name }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - display_name: Debian 14
+            suite: forky
+            components: main
+            runner: ubuntu-latest
+            arch: amd64
+          - display_name: Debian 14
+            suite: forky
+            components: main
+            runner: ubuntu-24.04-arm
+            arch: arm64
+          - display_name: Ubuntu 26.04
+            suite: resolute
+            components: main universe
+            runner: ubuntu-latest
+            arch: amd64
+          - display_name: Ubuntu 26.04
+            suite: resolute
+            components: main universe
+            runner: ubuntu-24.04-arm
+            arch: arm64
+
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - name: Create Build Environment
+      uses: ximion/debspawn-action/setup@v1
+      with:
+        suite: ${{ matrix.suite }}
+        components: ${{ matrix.components }}
+        packages: >-
+          gcc
+          g++
+          git-core
+          cmake
+          meson
+          ninja-build
+          qt6-base-dev
+          qt6-base-private-dev
+          qt6-wayland-private-dev
+          wayland-protocols
+        script:
+          git config --global --add safe.directory /srv/build
+
+    - name: Build (CMake)
+      uses: ximion/debspawn-action/run@v1
+      with:
+        suite: ${{ matrix.suite }}
+        summary: "Build LibWinpos on ${{ matrix.display_name }} (${{ matrix.arch }}) with CMake"
+        commands: |
+          cmake -S . -B build -G Ninja -DBUILD_EXAMPLES=ON
+          cmake --build build
+
+    - name: Build (Meson)
+      uses: ximion/debspawn-action/run@v1
+      with:
+        suite: ${{ matrix.suite }}
+        summary: "Build LibWinpos on ${{ matrix.display_name }} (${{ matrix.arch }}) with Meson"
+        commands: |
+          meson setup build-meson -Dexamples=true
+          meson compile -C build-meson
