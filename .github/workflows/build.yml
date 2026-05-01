@@ -63,6 +63,7 @@ jobs:
         commands: |
           cmake -S . -B build -G Ninja -DBUILD_EXAMPLES=ON
           cmake --build build
+          DESTDIR=/tmp/install-c cmake --install build
 
     - name: Build (Meson)
       uses: ximion/debspawn-action/run@v1
@@ -71,4 +72,6 @@ jobs:
         summary: "Build LibWinpos on ${{ matrix.display_name }} (${{ matrix.arch }}) with Meson"
         commands: |
           meson setup build-meson -Dexamples=true
-          meson compile -C build-meson
+          cd build-meson
+          meson compile
+          DESTDIR=/tmp/install-m ninja install
