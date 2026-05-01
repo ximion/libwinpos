@@ -19,12 +19,7 @@ find_package(PkgConfig REQUIRED)
 
 set(QT_MIN_VERSION "6.8.2")
 
-# Wayland protocol data directories
-pkg_get_variable(Wayland_DATADIR wayland-client pkgdatadir)
-if(NOT Wayland_DATADIR)
-    message(FATAL_ERROR "Could not determine wayland-client data dir via pkg-config")
-endif()
-
+# Wayland protocol data directory
 pkg_get_variable(WaylandProtocols_DATADIR wayland-protocols pkgdatadir)
 if(NOT WaylandProtocols_DATADIR)
     message(FATAL_ERROR "wayland-protocols not found - install wayland-protocols")

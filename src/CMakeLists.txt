@@ -23,7 +23,6 @@ set_target_properties(WinposQt PROPERTIES
 qt6_generate_wayland_protocol_client_sources(WinposQt
     PRIVATE_CODE
     FILES
-        ${Wayland_DATADIR}/wayland.xml
         ${WaylandProtocols_DATADIR}/stable/xdg-shell/xdg-shell.xml
         ${CMAKE_SOURCE_DIR}/protocol/xx-zones-v1.xml
 )
