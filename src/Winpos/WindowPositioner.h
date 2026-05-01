@@ -109,6 +109,19 @@ public:
     /** Returns true when the positioner is fully valid and can send positions. */
     bool isActive() const;
 
+    /**
+     * Returns the current mouse cursor position in zone/screen coordinates,
+     * using the same coordinate space as position() and move().
+     *
+     * On Wayland the cursor position is only known while the pointer is over a
+     * Qt surface; in all other contexts Qt returns the last known position.
+     * For mouse-event-driven use cases (e.g. opening a popup at the cursor)
+     * this is always reliable.
+     *
+     * Returns a null QPoint if the window has no associated screen.
+     */
+    QPoint cursorPosition() const;
+
 public Q_SLOTS:
     /** Suggest a zone/screen-relative content position for this window. */
     void move(const QPoint &pos);

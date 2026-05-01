@@ -188,6 +188,14 @@ QRect WindowPositioner::frameGeometry() const
     return {fp, fs};
 }
 
+QPoint WindowPositioner::cursorPosition() const
+{
+    if (!d->window || !d->window->screen())
+        return {};
+
+    return QCursor::pos(d->window->screen()) - screenZoneOrigin(d->window);
+}
+
 bool WindowPositioner::isActive() const
 {
     if (d->isOnWayland) {
