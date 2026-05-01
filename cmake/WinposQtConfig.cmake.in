@@ -1,0 +1,8 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(Qt6 REQUIRED COMPONENTS Core Gui)
+
+include("${CMAKE_CURRENT_LIST_DIR}/WinposQtTargets.cmake")
+
+check_required_components(WinposQt)

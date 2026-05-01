@@ -38,6 +38,21 @@ foreach spec : protocol_specs
   )
 endforeach
 
+winposqt_hdr = [
+    'Winpos/Manager.h',
+    'Winpos/Zone.h',
+    'Winpos/ZoneItem.h',
+    'Winpos/WindowPositioner.h',
+    'Winpos/winposqt_export.h',
+]
+
+winposqt_src = [
+    'manager.cpp',
+    'zone.cpp',
+    'zoneitem.cpp',
+    'windowpositioner.cpp',
+]
+
 winposqt_inc = include_directories('.')
 
 winposqt_moc = qt.compile_moc(
@@ -53,10 +68,7 @@ winposqt_moc = qt.compile_moc(
 
 winposqt_lib = library('winpos-qt',
   sources: [
-    'manager.cpp',
-    'zone.cpp',
-    'zoneitem.cpp',
-    'windowpositioner.cpp',
+    winposqt_src,
     qt_wayland_sources,
     winposqt_moc,
   ],
@@ -76,4 +88,14 @@ winpos_qt_dep = declare_dependency(
   link_with: winposqt_lib,
   include_directories: winposqt_inc,
   dependencies: [qt6_dep],
+)
+
+install_headers(winposqt_hdr, subdir: 'Winpos')
+
+pkgconfig = import('pkgconfig')
+pkgconfig.generate(winposqt_lib,
+  name: 'winpos-qt',
+  description: 'Wayland/X11 window positioning library for Qt',
+  version: meson.project_version(),
+  requires: ['Qt6Core', 'Qt6Gui'],
 )

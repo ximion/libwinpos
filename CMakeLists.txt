@@ -15,6 +15,8 @@ option(BUILD_EXAMPLES "Build Qt examples" ON)
 # Dependencies
 #
 include(FeatureSummary)
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 find_package(PkgConfig REQUIRED)
 
 set(QT_MIN_VERSION "6.8.2")
