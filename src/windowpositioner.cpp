@@ -190,7 +190,19 @@ QRect WindowPositioner::frameGeometry() const
 
 QPoint WindowPositioner::cursorPosition() const
 {
-    if (!d->window || !d->window->screen())
+    if (!d->window)
+        return {};
+
+    if (d->isOnWayland) {
+        // On Wayland, QCursor::pos() gives the cursor position relative to the
+        // focused Qt surface. When this window IS that surface, zone-relative
+        // cursor position = this window's zone position + surface-local cursor pos.
+        if (d->position.isNull())
+            return {};
+        return d->position + QCursor::pos();
+    }
+
+    if (!d->window->screen())
         return {};
 
     return QCursor::pos(d->window->screen()) - screenZoneOrigin(d->window);
