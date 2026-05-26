@@ -1,0 +1,14 @@
+LibWinpos Release Notes
+
+1. Commit changes in Git:
+
+git commit -a -m "Release version 0.1.1"
+git tag -s -f -m "Release 0.1.1" v0.1.1 <gpg password>
+git push && git push --tags
+
+2. Do post release version bump in `RELEASE`, `CMakeLists.txt` and `meson.build`
+
+3. Commit trivial changes:
+
+git commit -a -m "trivial: post release version bump"
+git push
