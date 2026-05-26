@@ -97,5 +97,9 @@ pkgconfig.generate(winposqt_lib,
   name: 'winpos-qt',
   description: 'Wayland/X11 window positioning library for Qt',
   version: meson.project_version(),
-  requires: ['Qt6Core', 'Qt6Gui'],
+  requires: [
+      'Qt6Core',
+      'Qt6Gui',
+      'Qt6WaylandClient'
+  ],
 )
