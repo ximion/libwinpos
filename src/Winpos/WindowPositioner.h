@@ -36,9 +36,12 @@ namespace Winpos
  * "top-left of the usable screen area", somewhat consistent with the Wayland
  * zone model.
  *
- * All position coordinates refer to the **content area** (window without
- * frame decorations), matching Qt's own `QWindow::position()` convention.
- * Use `frameGeometry()` when you need the full frame-inclusive rectangle.
+ * On Wayland, `position()` and `move()` refer to the top-left corner of the
+ * **window frame** (including server-side decorations), as defined by the
+ * xx-zones-v1 protocol. On X11 they refer to the **content area**, matching
+ * Qt's own `QWindow::position()` convention. Use `geometry()` for the
+ * content-area rectangle and `frameGeometry()` for the frame-inclusive
+ * rectangle; both are consistent across platforms.
  *
  * Usage example:
  * @code
@@ -100,7 +103,11 @@ public:
      */
     QMargins frameExtents() const;
 
-    /** Content geometry (position + window size) in zone/screen coordinates. */
+    /**
+     * Content-area geometry (without frame decorations) in zone/screen
+     * coordinates. On Wayland its top-left is position() offset by the
+     * left/top frame extents.
+     */
     QRect geometry() const;
 
     /** Full frame geometry including decorations in zone/screen coordinates. */
@@ -128,8 +135,9 @@ public Q_SLOTS:
     void move(int x, int y);
 
     /**
-     * Set both the position and size of the window.
-     * Equivalent to move(rect.topLeft()) + window()->resize(rect.size()).
+     * Set both the position and size of the window from a content-area
+     * geometry as returned by geometry(). On Wayland the frame extents are
+     * subtracted from the top-left before calling move().
      */
     void setGeometry(const QRect &rect);
 

@@ -173,6 +173,13 @@ QRect WindowPositioner::geometry() const
         return {};
     }
 
+    if (d->isOnWayland) {
+        // position() is the frame origin on Wayland, the content area
+        // starts after the left/top frame extents.
+        const QMargins ext = frameExtents();
+        return {position() + QPoint(ext.left(), ext.top()), d->window->size()};
+    }
+
     return {position(), d->window->size()};
 }
 
@@ -182,9 +189,14 @@ QRect WindowPositioner::frameGeometry() const
         return {};
     }
     const QMargins ext = frameExtents();
-    const QPoint fp = position() - QPoint(ext.left(), ext.top());
     const QSize fs = d->window->size() + QSize(ext.left() + ext.right(), ext.top() + ext.bottom());
 
+    if (d->isOnWayland) {
+        return {position(), fs};
+    }
+
+    // On X11, position() is the content-area position
+    const QPoint fp = position() - QPoint(ext.left(), ext.top());
     return {fp, fs};
 }
 
@@ -196,10 +208,11 @@ QPoint WindowPositioner::cursorPosition() const
     if (d->isOnWayland) {
         // On Wayland, QCursor::pos() gives the cursor position relative to the
         // focused Qt surface. When this window IS that surface, zone-relative
-        // cursor position = this window's zone position + surface-local cursor pos.
+        // cursor position = this window's content-area zone position +
+        // surface-local cursor pos.
         if (d->position.isNull())
             return {};
-        return d->position + QCursor::pos();
+        return geometry().topLeft() + QCursor::pos();
     }
 
     if (!d->window->screen())
@@ -245,7 +258,14 @@ void WindowPositioner::move(int x, int y)
 
 void WindowPositioner::setGeometry(const QRect &rect)
 {
-    move(rect.topLeft());
+    // rect is a content-area geometry (see geometry()), while move()
+    // takes the frame origin on Wayland.
+    QPoint pos = rect.topLeft();
+    if (d->isOnWayland) {
+        const QMargins ext = frameExtents();
+        pos -= QPoint(ext.left(), ext.top());
+    }
+    move(pos);
     if (d->window) {
         d->window->resize(rect.size());
     }
@@ -475,12 +495,16 @@ bool WindowPositioner::restoreGeometry(const QByteArray &geometry)
     if (stream.status() != QDataStream::Ok)
         return false;
 
-    // Clamp position if the zone size has changed since the geometry was saved.
+    // Clamp position if the zone size has changed since the geometry was saved,
+    // keeping the full frame within the zone.
     const QSize currentZoneSize = zoneSize();
     if (!currentZoneSize.isEmpty() && !restoredZoneSize.isEmpty() && currentZoneSize != restoredZoneSize) {
+        const QMargins ext = frameExtents();
+        const int frameWidth = restoredGeometry.width() + ext.left() + ext.right();
+        const int frameHeight = restoredGeometry.height() + ext.top() + ext.bottom();
         QPoint pos = restoredGeometry.topLeft();
-        pos.setX(qBound(0, pos.x(), currentZoneSize.width() - restoredGeometry.width()));
-        pos.setY(qBound(0, pos.y(), currentZoneSize.height() - restoredGeometry.height()));
+        pos.setX(qBound(ext.left(), pos.x(), qMax(ext.left(), currentZoneSize.width() - frameWidth + ext.left())));
+        pos.setY(qBound(ext.top(), pos.y(), qMax(ext.top(), currentZoneSize.height() - frameHeight + ext.top())));
         restoredGeometry.moveTopLeft(pos);
     }
 
