@@ -156,12 +156,24 @@ public Q_SLOTS:
      * produced by saveGeometry(). The format mirrors Qt's
      * QWidget::restoreGeometry().
      *
-     * If the stored zone size differs from the current one, the position is
-     * clamped so the window stays inside the zone.
+     * If the zone size differs from the one the geometry was saved with, the
+     * geometry is adapted separately for each axis on which the size changed:
+     * The position is scaled by the ratio of the free space around the window
+     * frame, so the window keeps its relative placement and is always fully
+     * inside the zone. A window that is larger than the zone is shrunk
+     * to fit.
+     *
+     * On Wayland, the zone size and frame extents are only known once the
+     * window has joined its zone. If that is not the case yet, the saved size
+     * is applied immediately, while the position is applied as soon as the
+     * compositor has reported the initial position of the window in its zone.
+     * Calling move() or setGeometry() in the meantime cancels the pending
+     * restore.
      *
      * @param geometry  Byte array returned by a prior saveGeometry() call.
-     * @return @c true if the data was valid and the geometry was applied,
-     *         @c false if the data was unrecognized or malformed.
+     * @return @c true if the data was valid and the geometry was applied or
+     *         is scheduled to be applied, @c false if the data was unrecognized
+     *         or malformed.
      */
     bool restoreGeometry(const QByteArray &geometry);
 
@@ -185,6 +197,7 @@ private:
     void initializeWayland();
     void cleanupWayland();
     void setupX11(QScreen *screen);
+    void applyPendingRestore();
 
     class Private;
     Private *d;

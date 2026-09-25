@@ -40,9 +40,15 @@ connect(pos, &Winpos::WindowPositioner::zoneSizeChanged, this, [pos] {
 pos->move(100, 50);
 
 // Save and restore geometry across sessions.
-QRect saved = pos->geometry();       // position + window size
-pos->setGeometry(saved);             // restores both position and size
+QByteArray saved = pos->saveGeometry();  // position, window size & zone size
+pos->restoreGeometry(saved);             // restores both position and size
 ```
+
+`restoreGeometry()` can be called right after creating the positioner, the geometry
+is applied once the window has joined its zone. If the zone size has changed since
+the geometry was saved (e.g. because a smaller screen is used now), the position is
+scaled by the free space around the window, so the window keeps its relative placement
+and stays fully inside the zone. Windows larger than the zone are shrunk to fit.
 
 ### Low-level API
 

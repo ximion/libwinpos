@@ -18,6 +18,8 @@
 #include <QWindow>
 #include <QtGui/qpa/qplatformwindow_p.h>
 
+#include <optional>
+
 #include "Winpos/Manager.h"
 #include "Winpos/Zone.h"
 #include "Winpos/ZoneItem.h"
@@ -40,11 +42,22 @@ public:
     QMetaObject::Connection zoneSizeConn;
     QPoint pendingPosition;
     bool hasPendingPosition = false;
+    // set once the item received a position event in its current zone, at
+    // which point the zone size and frame extents are known as well.
+    bool hasItemPosition = false;
 
     // Position/size state (all environments)
     QPoint position;
     QSize zoneSize;
     QMargins frameExtents;
+
+    // Geometry from restoreGeometry() that could not be applied yet
+    struct PendingRestore {
+        QRect frameGeometry;
+        QRect geometry;
+        QSize zoneSize;
+    };
+    std::optional<PendingRestore> pendingRestore;
 
     // X11-only
     QMetaObject::Connection screenSizeConn;
@@ -54,6 +67,35 @@ static QPoint screenZoneOrigin(const QWindow *window)
 {
     const auto screen = window->screen();
     return screen ? screen->availableGeometry().topLeft() : QPoint();
+}
+
+/**
+ * Map one axis of a saved frame rect into a zone whose extent has changed.
+ *
+ * The position is scaled by the ratio of the free space rather than by the zone
+ * extent itself, so a centered frame stays centered, an edge-aligned frame
+ * stays edge-aligned, and the result is always inside the zone. A frame
+ * longer than the zone is shrunk to fit.
+ *
+ * @p pos and @p len are the frame origin and the frame length to restore,
+ * @p savedLen is the frame length at the time the geometry was saved.
+ * Zone extents <= 0 mean infinite or unknown. Nothing is changed if the
+ * current zone is infinite or has the same extent as the saved one.
+ */
+static void fitAxisToZone(int &pos, int &len, int savedLen, int savedZone, int currentZone, int minLen)
+{
+    if (currentZone <= 0 || savedZone == currentZone) {
+        return;
+    }
+
+    len = qMin(len, qMax(currentZone, minLen));
+
+    const int newFree = qMax(0, currentZone - len);
+    const int oldFree = savedZone - savedLen;
+    if (savedZone > 0 && oldFree > 0) {
+        pos = qRound(double(pos) * newFree / oldFree);
+    }
+    pos = qBound(0, pos, newFree);
 }
 
 WindowPositioner::WindowPositioner(QWindow *window, QObject *parent)
@@ -116,6 +158,7 @@ void WindowPositioner::setZone(Zone *zone)
 
     disconnect(d->zoneSizeConn);
     d->zone = zone;
+    d->hasItemPosition = false;
     Q_EMIT zoneChanged(zone);
 
     if (zone) {
@@ -232,6 +275,9 @@ bool WindowPositioner::isActive() const
 
 void WindowPositioner::move(const QPoint &pos)
 {
+    // an explicit move supersedes a geometry restore that is still pending
+    d->pendingRestore.reset();
+
     if (d->isOnWayland) {
         if (!d->item || !d->zone) {
             d->pendingPosition = pos;
@@ -338,6 +384,7 @@ void WindowPositioner::onWaylandScreenChanged(QScreen *screen)
     disconnect(d->zoneSizeConn);
     d->zone = newZone;
     d->zoneSize = newZone->size();
+    d->hasItemPosition = false;
     Q_EMIT zoneChanged(newZone);
     Q_EMIT zoneSizeChanged(d->zoneSize);
 
@@ -374,6 +421,11 @@ void WindowPositioner::initializeWayland()
     connect(d->item, &ZoneItem::positionChanged, this, [this](const QPoint &pos) {
         d->position = pos;
         Q_EMIT positionChanged(pos);
+
+        // The compositor sends the frame extents before the first position
+        // event in a zone, so a deferred geometry restore can be resolved now.
+        d->hasItemPosition = true;
+        applyPendingRestore();
     });
     connect(d->item, &ZoneItem::positionFailed, this, &WindowPositioner::positionFailed);
     connect(d->item, &ZoneItem::frameExtentsChanged, this, [this](const QMargins &ext) {
@@ -384,6 +436,7 @@ void WindowPositioner::initializeWayland()
         d->item->deleteLater();
         d->item = nullptr;
         d->zone = nullptr;
+        d->hasItemPosition = false;
         disconnect(d->zoneSizeConn);
     });
 
@@ -422,6 +475,7 @@ void WindowPositioner::cleanupWayland()
     delete d->item;
     d->item = nullptr;
     d->zone = nullptr;
+    d->hasItemPosition = false;
 }
 
 void WindowPositioner::setupX11(QScreen *screen)
@@ -495,21 +549,19 @@ bool WindowPositioner::restoreGeometry(const QByteArray &geometry)
     if (stream.status() != QDataStream::Ok)
         return false;
 
-    // Clamp position if the zone size has changed since the geometry was saved,
-    // keeping the full frame within the zone.
-    const QSize currentZoneSize = zoneSize();
-    if (!currentZoneSize.isEmpty() && !restoredZoneSize.isEmpty() && currentZoneSize != restoredZoneSize) {
-        const QMargins ext = frameExtents();
-        const int frameWidth = restoredGeometry.width() + ext.left() + ext.right();
-        const int frameHeight = restoredGeometry.height() + ext.top() + ext.bottom();
-        QPoint pos = restoredGeometry.topLeft();
-        pos.setX(qBound(ext.left(), pos.x(), qMax(ext.left(), currentZoneSize.width() - frameWidth + ext.left())));
-        pos.setY(qBound(ext.top(), pos.y(), qMax(ext.top(), currentZoneSize.height() - frameHeight + ext.top())));
-        restoredGeometry.moveTopLeft(pos);
-    }
+    if (!maximized && !fullScreen) {
+        d->hasPendingPosition = false;
+        d->pendingRestore = Private::PendingRestore{restoredFrameGeometry, restoredGeometry, restoredZoneSize};
 
-    if (!maximized && !fullScreen)
-        setGeometry(restoredGeometry);
+        if (!d->isOnWayland || (d->item && d->zone && d->hasItemPosition)) {
+            applyPendingRestore();
+        } else if (d->window) {
+            // The zone size and frame extents are not known yet, so the position
+            // is applied once the item received its first position in the zone.
+            // Resize right away, so the window is mapped with its saved size.
+            d->window->resize(restoredGeometry.size());
+        }
+    }
 
     if (d->window) {
         Qt::WindowStates states = d->window->windowStates();
@@ -520,6 +572,33 @@ bool WindowPositioner::restoreGeometry(const QByteArray &geometry)
     }
 
     return true;
+}
+
+void WindowPositioner::applyPendingRestore()
+{
+    if (!d->pendingRestore || !d->window) {
+        return;
+    }
+
+    // reset first, setting the position yields another position event
+    const Private::PendingRestore restore = *d->pendingRestore;
+    d->pendingRestore.reset();
+
+    // Work in frame coordinates: the saved frame origin has the same meaning
+    // on all platforms, and the whole frame is supposed to fit into the zone.
+    const QMargins ext = frameExtents();
+    const QSize extSize(ext.left() + ext.right(), ext.top() + ext.bottom());
+    const QSize minFrameSize = d->window->minimumSize() + extSize;
+    const QSize savedFrameSize = restore.frameGeometry.size();
+    const QSize currentZoneSize = zoneSize();
+
+    QPoint pos = restore.frameGeometry.topLeft();
+    QSize frameSize = restore.geometry.size() + extSize;
+
+    fitAxisToZone(pos.rx(), frameSize.rwidth(), savedFrameSize.width(), restore.zoneSize.width(), currentZoneSize.width(), minFrameSize.width());
+    fitAxisToZone(pos.ry(), frameSize.rheight(), savedFrameSize.height(), restore.zoneSize.height(), currentZoneSize.height(), minFrameSize.height());
+
+    setGeometry({pos + QPoint(ext.left(), ext.top()), frameSize - extSize});
 }
 
 } // namespace Winpos

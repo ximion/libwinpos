@@ -25,6 +25,12 @@ public:
     explicit DemoWindow(QWidget *parent = nullptr);
     ~DemoWindow() override;
 
+    /**
+     * Restore the previously saved geometry as soon as the window is shown,
+     * before the window has joined its zone.
+     */
+    void setRestoreOnStartup(bool restore);
+
 protected:
     void showEvent(QShowEvent *event) override;
 
@@ -33,10 +39,13 @@ private:
     void updateLabels();
     void setupPositioner(QWindow *window);
     void onPositionFailed();
+    void saveGeometryToFile();
+    void restoreGeometryFromFile();
 
     QLabel *m_statusLabel = nullptr;
     QLabel *m_zoneSizeLabel = nullptr;
     QLabel *m_positionLabel = nullptr;
 
     Winpos::WindowPositioner *m_positioner = nullptr;
+    bool m_restoreOnStartup = false;
 };

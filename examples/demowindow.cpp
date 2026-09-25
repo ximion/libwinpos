@@ -9,11 +9,15 @@
 #include <Winpos/Manager.h>
 #include <Winpos/WindowPositioner.h>
 
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QLabel>
 #include <QPushButton>
 #include <QShowEvent>
+#include <QStandardPaths>
 #include <QStatusBar>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -144,6 +148,22 @@ void DemoWindow::setupUi()
     cornerBtn(QStringLiteral("Bottom-right"), 1, 1, {-1, -1});
 
     vbox->addWidget(cornerGroup);
+
+    // Save & restore
+    auto geometryGroup = new QGroupBox(QStringLiteral("Geometry"), central);
+    auto geometryLayout = new QGridLayout(geometryGroup);
+
+    auto saveBtn = new QPushButton(QStringLiteral("Save geometry"), geometryGroup);
+    saveBtn->setFixedSize(120, 32);
+    geometryLayout->addWidget(saveBtn, 0, 0, Qt::AlignCenter);
+    connect(saveBtn, &QPushButton::clicked, this, &DemoWindow::saveGeometryToFile);
+
+    auto restoreBtn = new QPushButton(QStringLiteral("Restore geometry"), geometryGroup);
+    restoreBtn->setFixedSize(120, 32);
+    geometryLayout->addWidget(restoreBtn, 0, 1, Qt::AlignCenter);
+    connect(restoreBtn, &QPushButton::clicked, this, &DemoWindow::restoreGeometryFromFile);
+
+    vbox->addWidget(geometryGroup);
     vbox->addStretch();
 
     // Status bar
@@ -184,6 +204,60 @@ void DemoWindow::setupPositioner(QWindow *window)
     });
 
     updateLabels();
+
+    // The window has not joined its zone yet at this point, so this tests
+    // the deferred geometry restore.
+    if (m_restoreOnStartup) {
+        restoreGeometryFromFile();
+    }
+}
+
+void DemoWindow::setRestoreOnStartup(bool restore)
+{
+    m_restoreOnStartup = restore;
+}
+
+static QString geometryFilePath()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/geometry.bin");
+}
+
+void DemoWindow::saveGeometryToFile()
+{
+    if (!m_positioner) {
+        return;
+    }
+
+    const QString path = geometryFilePath();
+    QDir().mkpath(QFileInfo(path).absolutePath());
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate) || file.write(m_positioner->saveGeometry()) < 0) {
+        statusBar()->showMessage(QStringLiteral("Failed to write %1: %2").arg(path, file.errorString()), 5000);
+        return;
+    }
+
+    statusBar()->showMessage(QStringLiteral("Geometry saved to %1").arg(path), 5000);
+}
+
+void DemoWindow::restoreGeometryFromFile()
+{
+    if (!m_positioner) {
+        return;
+    }
+
+    const QString path = geometryFilePath();
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        statusBar()->showMessage(QStringLiteral("Failed to read %1: %2").arg(path, file.errorString()), 5000);
+        return;
+    }
+
+    if (m_positioner->restoreGeometry(file.readAll())) {
+        statusBar()->showMessage(QStringLiteral("Geometry restored from %1").arg(path), 5000);
+    } else {
+        statusBar()->showMessage(QStringLiteral("No valid geometry in %1").arg(path), 5000);
+    }
 }
 
 void DemoWindow::updateLabels()
